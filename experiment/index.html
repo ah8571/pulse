@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Pulse latency experiment</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 900px; }
+  h1 { font-size: 1.3rem; }
+  .controls { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin: 1rem 0; }
+  button { padding: 0.4rem 0.9rem; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; font-size: 0.85rem; }
+  th, td { border: 1px solid #ccc; padding: 0.35rem 0.5rem; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  .note { color: #555; font-size: 0.85rem; line-height: 1.5; }
+  #chat { border: 1px solid #ddd; height: 240px; overflow-y: auto; margin-top: 1rem;
+          padding: 0.5rem; font-size: 0.75rem; }
+  .msg { padding: 0.3rem; margin-bottom: 0.3rem; border-radius: 4px; }
+  .user { background: #eef3ff; }
+  .assistant { background: #f4f4f4; }
+  .cite { color: #777; font-size: 0.7rem; margin-left: 0.5rem; }
+</style>
+</head>
+<body>
+<h1>Where does the time go? (AI chat history hydration)</h1>
+<p class="note">
+  Each run fetches a fake conversation from the local server and measures every stage
+  separately. <strong>TTFB</strong> = server think time + network. <strong>Download</strong> =
+  reading the response body. <strong>Parse</strong> = <code>JSON.parse</code>.
+  <strong>Render</strong> = building the DOM for every message.
+  Only Parse and Render are stages a Rust/Wasm client library could ever touch.
+  Run each size a few times; first runs include warm-up noise.
+</p>
+
+<div class="controls">
+  Messages:
+  <button data-count="50">50</button>
+  <button data-count="500">500</button>
+  <button data-count="2000">2,000</button>
+  <button data-count="10000">10,000</button>
+  <label><input type="checkbox" id="gzip" checked /> gzip</label>
+  <label><input type="checkbox" id="doRender" checked /> render to DOM</label>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Run</th><th>Msgs</th><th>Wire KB</th><th>JSON KB</th>
+      <th>TTFB ms</th><th>Download ms</th><th>Parse ms</th><th>Render ms</th><th>Total ms</th>
+    </tr>
+  </thead>
+  <tbody id="results"></tbody>
+</table>
+
+<div id="chat"></div>
+
+<script>
+let runCounter = 0;
+
+async function run(count) {
+  const gzip = document.getElementById('gzip').checked ? '1' : '0';
+  const doRender = document.getElementById('doRender').checked;
+  const url = `/conversation?messages=${count}&gzip=${gzip}&t=${Date.now()}`;
+
+  const t0 = performance.now();
+
+  // --- Stage 1: TTFB (headers arrive) ---
+  const res = await fetch(url);
+  const tHeaders = performance.now();
+
+  // --- Stage 2: Download (read the body stream ourselves) ---
+  const reader = res.body.getReader();
+  const chunks = [];
+  let wireBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    wireBytes += value.length; // bytes AFTER decompression, as delivered to JS
+  }
+  const tDownloaded = performance.now();
+
+  // Reassemble into one string.
+  const blob = new Blob(chunks);
+  const text = await blob.text();
+  const tText = performance.now();
+
+  // --- Stage 3: Parse ---
+  const data = JSON.parse(text);
+  const tParsed = performance.now();
+
+  // --- Stage 4: Render (build DOM for every message) ---
+  let tRendered = tParsed;
+  if (doRender) {
+    const chat = document.getElementById('chat');
+    chat.textContent = '';
+    const frag = document.createDocumentFragment();
+    for (const m of data.messages) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + m.role;
+      div.textContent = m.role + ': ' + m.content;
+      if (m.citations) {
+        for (const c of m.citations) {
+          const span = document.createElement('span');
+          span.className = 'cite';
+          span.textContent = '[' + c.title.slice(0, 30) + ']';
+          div.appendChild(span);
+        }
+      }
+      frag.appendChild(div);
+    }
+    chat.appendChild(frag);
+    tRendered = performance.now();
+  }
+
+  const uncompressed = parseInt(res.headers.get('X-Uncompressed-Bytes') || '0', 10);
+
+  addRow({
+    run: ++runCounter,
+    count,
+    wireKB: (wireBytes / 1024).toFixed(0),
+    jsonKB: (uncompressed / 1024).toFixed(0),
+    ttfb: (tHeaders - t0).toFixed(1),
+    download: (tDownloaded - tHeaders + (tText - tDownloaded)).toFixed(1),
+    parse: (tParsed - tText).toFixed(1),
+    render: doRender ? (tRendered - tParsed).toFixed(1) : '—',
+    total: (tRendered - t0).toFixed(1),
+  });
+}
+
+function addRow(r) {
+  const tr = document.createElement('tr');
+  tr.innerHTML =
+    `<td>#${r.run}</td><td>${r.count}</td><td>${r.wireKB}</td><td>${r.jsonKB}</td>` +
+    `<td>${r.ttfb}</td><td>${r.download}</td><td>${r.parse}</td>` +
+    `<td>${r.render}</td><td><strong>${r.total}</strong></td>`;
+  document.getElementById('results').prepend(tr);
+}
+
+document.querySelectorAll('button[data-count]').forEach(btn => {
+  btn.addEventListener('click', () => run(parseInt(btn.dataset.count, 10)));
+});
+</script>
+</body>
+</html>
