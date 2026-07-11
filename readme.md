@@ -86,6 +86,13 @@ An MVP could look like this:
 
 One concrete way to make Pulse real is to focus on a single painful scenario: reopening a long AI conversation. As chats grow to thousands of messages, applications pay a heavy price to reload them — the full history is fetched, parsed, turned into JavaScript objects, and rendered before the user can scroll or search.
 
+It is worth being precise about where the cost lives. The model's own context window is processed server-side by the AI provider — when an assistant "re-reads" a long conversation, that work happens in the provider's datacenter and no client library can touch it. But the same intuition has two real client-side analogs:
+
+1. **Re-hydrating the conversation UI** when a user reopens a long chat — fetching, decoding, and rendering thousands of messages before the interface feels usable.
+2. **Assembling and trimming the context before sending it** — token counting, truncation, and relevance filtering over history, which is genuinely CPU-bound in JavaScript and where Rust/Wasm tokenizers have already proven their value.
+
+In other words, "parse the context window faster" becomes "hydrate and assemble conversation state faster" — a version of the problem a client library can actually solve.
+
 A focused first product could be a conversation-history engine with a Rust core compiled to WebAssembly:
 
 * **Compact binary storage.** Messages are kept in a compact binary form, persisted locally (for example in IndexedDB), instead of re-parsed JSON blobs.
@@ -96,6 +103,10 @@ A focused first product could be a conversation-history engine with a Rust core 
 * **One simple integration point.** All of it exposed through a small React hook such as `useConversation()`, so application teams adopt it without touching Rust or Wasm directly.
 
 This bundles the legitimate CPU-bound wins — binary decode, search, token counting — behind a developer experience that ordinary product teams can pick up in an afternoon. It is narrow enough for a small team to ship, testable against a plain-JSON baseline, and directly relevant to a class of applications that is growing quickly.
+
+### The Expansion Path
+
+Starting narrow does not mean staying narrow. The same Rust core that decodes conversation history on the client can later run on the server as the encoder — the shared-core advantage described in "Why Rust" above. If the client engine earns adoption, natural next steps include a server-side companion that stores and streams histories in the same binary format, and eventually broader caching or aggregation layers for other kinds of large structured data. Those later steps enter more crowded territory with established incumbents, which is exactly why they should be expansions justified by real usage rather than the starting point.
 
 ## Development Roadmap
 1. Start with one narrow pain point.

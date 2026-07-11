@@ -27,7 +27,9 @@
   separately. <strong>TTFB</strong> = server think time + network. <strong>Download</strong> =
   reading the response body. <strong>Parse</strong> = <code>JSON.parse</code>.
   <strong>Render</strong> = building the DOM for every message.
-  Only Parse and Render are stages a Rust/Wasm client library could ever touch.
+  <strong>Paint</strong> = the style/layout/paint work the browser does after the script
+  finishes — this is where large-DOM jank actually hides.
+  Only Parse, Render, and Paint are stages a client library could ever influence.
   Run each size a few times; first runs include warm-up noise.
 </p>
 
@@ -45,7 +47,7 @@
   <thead>
     <tr>
       <th>Run</th><th>Msgs</th><th>Wire KB</th><th>JSON KB</th>
-      <th>TTFB ms</th><th>Download ms</th><th>Parse ms</th><th>Render ms</th><th>Total ms</th>
+      <th>TTFB ms</th><th>Download ms</th><th>Parse ms</th><th>Render ms</th><th>Paint ms</th><th>Total ms</th>
     </tr>
   </thead>
   <tbody id="results"></tbody>
@@ -90,6 +92,7 @@ async function run(count) {
 
   // --- Stage 4: Render (build DOM for every message) ---
   let tRendered = tParsed;
+  let tPainted = tParsed;
   if (doRender) {
     const chat = document.getElementById('chat');
     chat.textContent = '';
@@ -110,6 +113,13 @@ async function run(count) {
     }
     chat.appendChild(frag);
     tRendered = performance.now();
+
+    // --- Stage 5: Paint (style/layout/paint happens after the script yields).
+    // Two nested animation frames guarantee at least one full frame was produced.
+    await new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+    tPainted = performance.now();
   }
 
   const uncompressed = parseInt(res.headers.get('X-Uncompressed-Bytes') || '0', 10);
@@ -123,7 +133,8 @@ async function run(count) {
     download: (tDownloaded - tHeaders + (tText - tDownloaded)).toFixed(1),
     parse: (tParsed - tText).toFixed(1),
     render: doRender ? (tRendered - tParsed).toFixed(1) : '—',
-    total: (tRendered - t0).toFixed(1),
+    paint: doRender ? (tPainted - tRendered).toFixed(1) : '—',
+    total: (tPainted - t0).toFixed(1),
   });
 }
 
@@ -132,7 +143,7 @@ function addRow(r) {
   tr.innerHTML =
     `<td>#${r.run}</td><td>${r.count}</td><td>${r.wireKB}</td><td>${r.jsonKB}</td>` +
     `<td>${r.ttfb}</td><td>${r.download}</td><td>${r.parse}</td>` +
-    `<td>${r.render}</td><td><strong>${r.total}</strong></td>`;
+    `<td>${r.render}</td><td>${r.paint}</td><td><strong>${r.total}</strong></td>`;
   document.getElementById('results').prepend(tr);
 }
 
