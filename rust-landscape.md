@@ -40,7 +40,7 @@ This is the layer Pulse targets: Rust compiled to Wasm, running inside the brows
 
 ### Collaboration and local data
 
-* **Automerge** — CRDT library for collaborative/local-first apps; its core is Rust compiled to Wasm. The clearest proof that a Rust core behind a friendly JS API can win adoption.
+* **Automerge** — CRDT library for collaborative/local-first apps; its core is Rust compiled to Wasm. This is the single most instructive project for Pulse to study: it proves the Rust-core/JavaScript-API pattern can win a niche at application runtime. Worth researching as a group — the Rust core (`automerge`), the JavaScript bindings (`@automerge/automerge`), the sync-and-storage layer (`automerge-repo` with IndexedDB and network adapters), and the research lab behind it (Ink & Switch, whose local-first papers shaped the whole space). The lesson in its structure: the Rust core is invisible to users, the JS API is the product, and storage/sync adapters make adoption easy.
 * **Yrs** — Rust port of Yjs, the other major CRDT engine.
 
 ### AI-adjacent
@@ -70,6 +70,19 @@ This is the layer Pulse targets: Rust compiled to Wasm, running inside the brows
 * **arrow-rs IPC** — streamable columnar format.
 
 All of these have both Rust and JavaScript implementations because formats are language-neutral. None of them ship a frontend integration story; that gap is consistently left to application teams.
+
+## Layer 5: AI API Infrastructure — Future Research
+
+Not all of these are Rust, but they define the emerging "AI infra" landscape that a Pulse-style project could eventually plug into or expand toward. Flagged here for later research rather than immediate competition.
+
+* **LiteLLM** — open-source gateway (Python) that gives one unified API across 100+ model providers; the de facto default for multi-provider routing.
+* **Portkey** — commercial AI gateway: routing, fallbacks, caching, observability for LLM calls.
+* **OpenRouter** — hosted unified API across model providers with automatic routing.
+* **Helicone** — LLM observability and caching proxy (its gateway components are Rust).
+* **Cloudflare AI Gateway** — edge-level caching, rate limiting, and analytics for AI API traffic.
+* **Kong AI Gateway** — AI plugins on an established API gateway platform.
+
+Why this matters for Pulse: these tools optimize the *server-to-model* path (routing, caching, cost). Almost none of them touch the *server-to-client* path — how conversation state gets to and from the user's device efficiently. If Pulse's client engine works, this layer is where a server-side companion would eventually live, offering developers one hookup that benefits both directions.
 
 ## What the Map Suggests
 

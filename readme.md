@@ -109,6 +109,20 @@ This bundles the legitimate CPU-bound wins — binary decode, search, token coun
 Starting narrow does not mean staying narrow. The same Rust core that decodes conversation history on the client can later run on the server as the encoder — the shared-core advantage described in "Why Rust" above. If the client engine earns adoption, natural next steps include a server-side companion that stores and streams histories in the same binary format, and eventually broader caching or aggregation layers for other kinds of large structured data. Those later steps enter more crowded territory with established incumbents, which is exactly why they should be expansions justified by real usage rather than the starting point.
 
 ## Development Roadmap
+
+### First Milestone: TypeScript Before Rust
+
+The first buildable milestone deliberately skips Rust. Build the `useConversation()` hook in plain TypeScript — windowed rendering over an IndexedDB-backed message store — and benchmark it against the naive fetch-parse-render-everything path using the measurement experiment in this repository.
+
+This produces three things at once:
+
+1. a working product skeleton (the hook, the store, the windowing logic)
+2. an honest baseline to beat
+3. direct evidence of exactly where a Rust/Wasm core earns its place (binary decode, full-text search, token counting)
+
+Only then introduce Rust, one hot path at a time. This inverts the common failure mode of starting with the hardest technology first and burning out before anything works end to end.
+
+### Overall Sequence
 1. Start with one narrow pain point.
 2. Build one clear integration path.
 3. Measure the gain against plain JSON.
